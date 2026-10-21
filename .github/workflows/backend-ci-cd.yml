@@ -1,0 +1,131 @@
+name: AgroHelp Backend & Docker CI/CD
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/agrohelp-backend
+
+jobs:
+  # ========================================================
+  # Job 1: Build & Package Kotlin Spring Boot Application
+  # ========================================================
+  build-jar:
+    name: ☕ Build Kotlin Spring Boot JAR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: 🔧 Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: 🐘 Cache Gradle Dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-backend-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-backend-gradle-
+
+      - name: 🏗️ Build Spring Boot Executable JAR
+        run: ./gradlew bootJar --no-daemon -x test
+
+      - name: 📤 Upload Backend JAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agrohelp-backend-jar
+          path: build/libs/*.jar
+          retention-days: 14
+
+  # ========================================================
+  # Job 2: Build & Verify Multi-Platform Docker Container
+  # ========================================================
+  build-docker:
+    name: 🐳 Build & Test Docker Image
+    needs: build-jar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Set up QEMU (Multi-Arch Support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔑 Log in to GitHub Container Registry (GHCR)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔑 Log in to Docker Hub (Optional)
+        if: github.event_name != 'pull_request' && env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+      - name: 🏷️ Extract Docker Metadata & Tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,format=short
+
+      - name: 🚀 Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 🩺 Test Full Stack with Docker Compose
+        run: |
+          docker compose up --build -d
+          echo "Waiting for PostgreSQL & Backend healthcheck..."
+          sleep 12
+          docker compose ps
+          docker compose logs backend
+          docker compose down
