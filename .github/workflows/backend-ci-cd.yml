@@ -34,23 +34,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'gradle'
 
-      - name: 🔧 Grant Execute Permission for Gradlew
-        run: chmod +x gradlew
-
-      - name: 🐘 Cache Gradle Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-backend-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-backend-gradle-
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: 🏗️ Build Spring Boot Executable JAR
-        run: ./gradlew bootJar --no-daemon -x test
+        run: ./gradlew bootJar --no-daemon -x test --stacktrace
 
       - name: 📤 Upload Backend JAR Artifact
         uses: actions/upload-artifact@v4
