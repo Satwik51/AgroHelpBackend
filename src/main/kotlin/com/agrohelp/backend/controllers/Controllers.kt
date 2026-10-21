@@ -2,6 +2,7 @@ package com.agrohelp.backend.controllers
 
 import com.agrohelp.backend.models.*
 import com.agrohelp.backend.services.*
+import org.springframework.data.domain.PageRequest
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -13,8 +14,30 @@ class CropController(private val cropService: CropService) {
     @GetMapping
     fun getCrops(
         @RequestParam(required = false) category: String?,
-        @RequestParam(required = false) search: String?
+        @RequestParam(required = false) search: String?,
+        @RequestParam(required = false) page: Int?,
+        @RequestParam(defaultValue = "25") size: Int
     ): ResponseEntity<ApiResponse<List<Crop>>> {
+        if (page != null) {
+            val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 100))
+            val paged = when {
+                !search.isNullOrBlank() -> cropService.searchCrops(search.trim(), pageable)
+                !category.isNullOrBlank() -> cropService.getCropsByCategory(category.trim(), pageable)
+                else -> cropService.getAllCrops(pageable)
+            }
+            return ResponseEntity.ok(
+                ApiResponse.paged(
+                    message = "Crops fetched successfully",
+                    data = paged.content,
+                    page = paged.number,
+                    size = paged.size,
+                    totalElements = paged.totalElements,
+                    totalPages = paged.totalPages,
+                    hasNext = paged.hasNext()
+                )
+            )
+        }
+
         val crops = when {
             !search.isNullOrBlank() -> cropService.searchCrops(search.trim())
             !category.isNullOrBlank() -> cropService.getCropsByCategory(category.trim())
@@ -39,8 +62,30 @@ class FertilizerController(private val fertilizerService: FertilizerService) {
     @GetMapping
     fun getFertilizers(
         @RequestParam(required = false) category: String?,
-        @RequestParam(required = false) search: String?
+        @RequestParam(required = false) search: String?,
+        @RequestParam(required = false) page: Int?,
+        @RequestParam(defaultValue = "25") size: Int
     ): ResponseEntity<ApiResponse<List<Fertilizer>>> {
+        if (page != null) {
+            val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 100))
+            val paged = when {
+                !search.isNullOrBlank() -> fertilizerService.searchFertilizers(search.trim(), pageable)
+                !category.isNullOrBlank() -> fertilizerService.getFertilizersByCategory(category.trim(), pageable)
+                else -> fertilizerService.getAllFertilizers(pageable)
+            }
+            return ResponseEntity.ok(
+                ApiResponse.paged(
+                    message = "Fertilizers fetched successfully",
+                    data = paged.content,
+                    page = paged.number,
+                    size = paged.size,
+                    totalElements = paged.totalElements,
+                    totalPages = paged.totalPages,
+                    hasNext = paged.hasNext()
+                )
+            )
+        }
+
         val fertilizers = when {
             !search.isNullOrBlank() -> fertilizerService.searchFertilizers(search.trim())
             !category.isNullOrBlank() -> fertilizerService.getFertilizersByCategory(category.trim())
@@ -65,8 +110,30 @@ class MandiPriceController(private val mandiPriceService: MandiPriceService) {
     @GetMapping
     fun getMandiPrices(
         @RequestParam(required = false) category: String?,
-        @RequestParam(required = false) search: String?
+        @RequestParam(required = false) search: String?,
+        @RequestParam(required = false) page: Int?,
+        @RequestParam(defaultValue = "25") size: Int
     ): ResponseEntity<ApiResponse<List<MandiPrice>>> {
+        if (page != null) {
+            val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, 100))
+            val paged = when {
+                !search.isNullOrBlank() -> mandiPriceService.searchMandiPrices(search.trim(), pageable)
+                !category.isNullOrBlank() -> mandiPriceService.getMandiPricesByCategory(category.trim(), pageable)
+                else -> mandiPriceService.getAllMandiPrices(pageable)
+            }
+            return ResponseEntity.ok(
+                ApiResponse.paged(
+                    message = "Mandi rates fetched successfully",
+                    data = paged.content,
+                    page = paged.number,
+                    size = paged.size,
+                    totalElements = paged.totalElements,
+                    totalPages = paged.totalPages,
+                    hasNext = paged.hasNext()
+                )
+            )
+        }
+
         val prices = when {
             !search.isNullOrBlank() -> mandiPriceService.searchMandiPrices(search.trim())
             !category.isNullOrBlank() -> mandiPriceService.getMandiPricesByCategory(category.trim())
@@ -119,9 +186,9 @@ class HealthController(
 ) {
     @GetMapping
     fun checkHealth(): ResponseEntity<Map<String, Any>> {
-        val crops = cropService.getAllCrops().size
-        val fertilizers = fertilizerService.getAllFertilizers().size
-        val mandiPrices = mandiPriceService.getAllMandiPrices().size
+        val crops = cropService.getCropsCount()
+        val fertilizers = fertilizerService.getFertilizersCount()
+        val mandiPrices = mandiPriceService.getMandiPricesCount()
         val healthData = mapOf(
             "status" to "UP",
             "server" to "AgroHelp Kotlin Spring Boot 3.4.1",
